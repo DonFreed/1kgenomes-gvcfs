@@ -9,10 +9,6 @@ if [ $work -eq 0 ]; then
     exit 0
 fi
 
-# Install RAID #
-export DEBIAN_FRONTEND=noninteractive
-apt-get -y --force-yes install mdadm
-
 # Unmount the alread mounted disk #
 mounted=$(mount | grep /mnt | wc -l)
 if [ $mounted -eq 1 ]; then
