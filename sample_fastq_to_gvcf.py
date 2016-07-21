@@ -86,7 +86,7 @@ def process_args():
     parser.add_argument("--threads", type=int, default=4, help="The number of alignment and indexing threads")
     parser.add_argument("--sort_mem", default="1G", help="Memory to use when sorting the alignment")
     parser.add_argument("--call_vars_mem", default="3g", help="Memory to use when calling variants")
-    parser.add_argument("--gatk", default="~/GenomeAnalysisTK.jar", help="The GATK .jar file")
+    parser.add_argument("--gatk", default="/home/ec2-user/GenomeAnalysisTK.jar", help="The GATK .jar file")
     parser.add_argument("reference", help="The reference genome")
     parser.add_argument("access_key", help="AWS access key")
     parser.add_argument("secret_key", help="AWS secret key")
