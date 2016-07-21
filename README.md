@@ -15,4 +15,5 @@ The AMI contains the following software:
 * [bwa](https://github.com/lh3/bwa) version 0.7.15
 * [samblaster](https://github.com/GregoryFaust/samblaster) version 0.1.22
 * [sambamba](http://lomereiter.github.io/sambamba/) version 0.6.3
-* The [GATK](https://software.broadinstitute.org/gatk/) jar file at /home/ec2-user/ version 3.5.0
+* Java 8
+* The [GATK](https://software.broadinstitute.org/gatk/) jar file at /usr/local/bin/ version 3.5.0
