@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 
-# Configure ephemeral disk space as a SGE resource (complex) #
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cp ${DIR}/sample_fastq_to_gvcf.py /data/
+echo 'PATH=/opt/sge6/bin/linux-x64/:$PATH' >> /home/onekg/.bashrc
+
+# Configure ephemeral disk space and RAM as a SGE resource (complex) #
 qconf -sc | head -n -1 > ~/tmp_complex.conf
 echo "ephemeral           ephem      MEMORY      <=    YES         YES        0        0" >> ~/tmp_complex.conf
+echo "total_mem           t_mem      MEMORY      <=    YES         YES        0        0" >> ~/tmp_complex.conf
 qconf -Mc ~/tmp_complex.conf
 
 # What are the cluster hosts? #
@@ -10,7 +15,6 @@ hosts=$(qconf -sel)
 n_hosts=$(echo $hosts | wc -w)
 
 # Run the ephemeral configuration script on each node #
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 for host in $hosts
 do
     ssh $host ${DIR}/node_startup.sh &
@@ -37,10 +41,16 @@ do
 
     # Find the ephemeral space (in bytes) #
     host_size=$(ssh $host df -B 1 | grep "ephemeral" | awk '{print $2}')
+
+    # Find the total memory (in bytes) #
+    mem_size=$(ssh $host cat /proc/meminfo | grep "MemTotal" | sed 's/^MemTotal:[ ]*\([0-9]*\) kB$/\1/')
+    mem_size=$((mem_size * 1024))
+    
     if [ -z $host_size ]; then
-        echo "complex_values        ephemeral=0" >> ~/tmp_node.conf
+        echo "complex_values        ephemeral=0,total_mem=$mem_size" >> ~/tmp_node.conf
     else
-        echo "complex_values        ephemeral=$host_size" >> ~/tmp_node.conf
+        echo "complex_values        ephemeral=$host_size,total_mem=$mem_size" >> ~/tmp_node.conf
     fi
+
     qconf -Me ~/tmp_node.conf
 done

@@ -6,9 +6,10 @@ import boto3
 import logging
 import os.path
 import time
+import pickle
 from retrying import retry
 
-analysis_cmd = 'qsub -e {log} -o {out} -l h="node*",ephemeral={size} general.sh {fastq_to_gvcf} {ref} {access_key} {secret_key} {dest} {sample} {input_fastq}'
+analysis_cmd = 'qsub -e {log} -o {out} -l h="node*",ephemeral={size},total_mem={mem} general.sh {fastq_to_gvcf} {ref} {access_key} {secret_key} {dest} {sample} {input_fastq}'
 
 @retry(wait_fixed=2000, stop_max_attempt_number=5)
 def check_n_waiting_jobs(max_waiting_jobs):
@@ -26,14 +27,15 @@ def check_n_waiting_jobs(max_waiting_jobs):
 
 def process_args():
     parser = argparse.ArgumentParser(description="Schedule processing of 1000 genomes fastq to gVCF files")
-    parser.add_argument("--fastq_index", default="ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/phase3/20130502.phase3.sequence.index", help="Fastq files used in phase3")
-    parser.add_argument("--1kg_bucket" default="1000genomes", help="The 1000 genomes bucket")
+    parser.add_argument("--fastq_index", default="ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/phase3/20130502.phase3.sequence.index", help="The index of fastq files used in phase3")
+    parser.add_argument("--onekg_bucket", default="1000genomes", help="The 1000 genomes bucket")
     parser.add_argument("--n_to_run", type=int, help="The number of samples to run [all]")
     parser.add_argument("--log_dir", default="/data/Logs/", help="A directory to store log files")
     parser.add_argument("--reference", default="/data/Reference/hs37d5.fa", help="The human reference genome")
     parser.add_argument("--sleep", default=5.0, type=float, help="The amount of time to sleep inbetween queueing jobs")
     parser.add_argument("--max_waiting_jobs", default=10, type=int, help="The maximum number of waiting jobs in the queue")
-    parser.add_argument("destination_key", default="1000genomes/gVCF/{sample}/{sample}.g.vcf.gz", help="The S3 destination key")
+    parser.add_argument("--destination_key", default="1000genomes/gVCF/{sample}/{sample}.g.vcf.gz", help="The S3 destination key")
+    parser.add_argument("--s3_keys_cache", default="/home/onekg/s3_paths.p", help="A pickle of the fastq keys in s3")
     parser.add_argument("destination_bucket", help="The destination bucket")
     parser.add_argument("access_key", help="AWS access key")
     parser.add_argument("secret_key", help="AWS secret key")
@@ -51,21 +53,26 @@ def main(args):
     s3 = aws_session.resource("s3")
 
     # Find all of the phase3 fastq in the 1000 genomes bucket #
-    s3_paths = {}
-    sample_bucket = s3.Bucket(args.1kg_bucket)
-    for s3_obj in sample_bucket.objects.filter(Prefix="phase3/data/"):
-        if s3_obj.key.endswith("_1.filt.fastq.gz"):
-            fq_name = s3_obj.key.split('/')[-1][:-16]
-            s3_paths[fq_name] = (s3_obj.key, s3_obj.size)
+    if os.path.isfile(args.s3_keys_cache):
+        s3_paths = pickle.load(open(args.s3_keys_cache, "rb"))
+    else:
+        s3_paths = {}
+        sample_bucket = s3.Bucket(args.onekg_bucket)
+        for s3_obj in sample_bucket.objects.filter(Prefix="phase3/data/"):
+            if s3_obj.key.endswith("_1.filt.fastq.gz"):
+                fq_name = s3_obj.key.split('/')[-1][:-16]
+                s3_paths[fq_name] = (s3_obj.key, s3_obj.size)
+        pickle.dump(s3_paths, open(args.s3_keys_cache, "wb"))
 
     # Download the sequence index #
-    cmd = "wget {}".format(args.fastq_index)
-    subprocess.check_call(cmd, shell=True)
+    if not os.path.isfile(os.path.basename(args.fastq_index)):
+        cmd = "wget {}".format(args.fastq_index)
+        subprocess.check_call(cmd, shell=True)
     
     # Get all fastq for a single sample #
     samples = {}
     with open(os.path.basename(args.fastq_index)) as f:
-        header = f.readline.rstrip().split('\t')
+        header = f.readline().rstrip().split('\t')
         for line in f:
             line = line.rstrip().split('\t')
             if line[header.index("ANALYSIS_GROUP")] != "low coverage":
@@ -89,7 +96,7 @@ def main(args):
     # Find all of the finsihed samples #
     finished_samples = set()
     dest_bucket = s3.Bucket(args.destination_bucket)
-    for s3_obj in dest_bucket.objects.filter(Prefix=destination_key[:destination_key.index('{')]):
+    for s3_obj in dest_bucket.objects.filter(Prefix=args.destination_key[:args.destination_key.index('{')]):
         if s3_obj.key.endswith(".g.vcf.gz"):
             finished_samples.add(s3_obj.key)            
 
@@ -109,21 +116,22 @@ def main(args):
             log = args.log_dir + "/analysis_{}.log".format(n_run),
             out = args.log_dir + "/analysis_{}.out".format(n_run),
             size = sum(sizes) * 2,
-            fastq_to_gvcf = os.path.dirname(__file__) + '/run_analysis.py',
+            mem = 5.5 * 1024 * 1024 * 1024, # Alignment uses ~5.5 GB
+            fastq_to_gvcf = '/data/sample_fastq_to_gvcf.py',
             ref = args.reference,
             access_key = args.access_key,
             secret_key = args.secret_key,
             dest = args.destination_bucket + '/' + sample_key,
             sample = sample,
-            input_fastq = ' '.join(fastq))
+            input_fastq = ' '.join([args.onekg_bucket + '/' + x for x in fastq]))
 
         logging.info("Running:\n{}".format(cmd))
-        subprocess.check_call(cmd)
+        subprocess.check_call(cmd, shell=True)
         time.sleep(args.sleep)
 
         n_run += 1
-        if hasattr(args, n_to_run):
-            if n_run >= n_to_run:
+        if hasattr(args, "n_to_run"):
+            if n_run >= args.n_to_run:
                 break
 
 if __name__ == "__main__":
