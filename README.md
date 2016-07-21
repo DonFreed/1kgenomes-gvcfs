@@ -8,9 +8,9 @@ This repository contains scripts for analyzing low-coverage fastq files using in
 
 The AMI contains the following software:
 * Python3
-* * retrying
-* * awscli
-* * boto3
+  * retrying
+  * awscli
+  * boto3
 * mdadm (software RAID)
 * [bwa](https://github.com/lh3/bwa) version 0.7.15
 * [samblaster](https://github.com/GregoryFaust/samblaster) version 0.1.22
