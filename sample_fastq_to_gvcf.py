@@ -57,7 +57,7 @@ def download_and_align(s3, bucket, fq1, fq2, sample, read_group_id, threads, ref
 
 def call_vars(bams, sample_name, ref, mem, gatk):
     hc_input = " -I " + " -I ".join(bams)
-    hc_output = "/ephemeral/" + sample_name + ".g.vcf"
+    hc_output = "/ephemeral/" + sample_name + ".g.vcf.gz"
 
     cmd = call_vars_cmd
     cmd = cmd.format(
