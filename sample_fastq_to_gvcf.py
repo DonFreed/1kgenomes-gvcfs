@@ -89,7 +89,7 @@ def index_bam(bam, threads):
 def process_args():
     parser = argparse.ArgumentParser(description="Process fastq files from a single sample to gvcf files. Initial files and final results are uploaded to S3")
     parser.add_argument("--threads", type=int, default=4, help="The number of alignment and indexing threads")
-    parser.add_argument("--sort_mem", default="1G", help="Memory to use when sorting the alignment")
+    parser.add_argument("--sort_mem", default="384M", help="Memory to use when sorting the alignment")
     parser.add_argument("--call_vars_mem", default="3g", help="Memory to use when calling variants")
     parser.add_argument("--gatk", default="/usr/local/bin/GenomeAnalysisTK.jar", help="The GATK .jar file")
     parser.add_argument("reference", help="The reference genome")
