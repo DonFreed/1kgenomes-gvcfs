@@ -44,7 +44,7 @@ def download_and_align(s3, bucket, fq1, fq2, sample, read_group_id, threads, ref
         fq1 = fq1_local,
         fq2 = fq2_local,
         mem = mem,
-        out = "/ephemeral/{read_group}_sorted.bam".format(read_group_id))
+        out = "/ephemeral/{read_group}_sorted.bam".format(read_group=read_group_id))
 
     logging.info("Running alignment: {}".format(cmd))
     subprocess.check_call(cmd, shell=True)
@@ -53,7 +53,7 @@ def download_and_align(s3, bucket, fq1, fq2, sample, read_group_id, threads, ref
     os.remove(fq1_local)
     os.remove(fq2_local)
 
-    return "/ephemeral/{read_group}_sorted.bam".format(read_group_id))
+    return "/ephemeral/{read_group}_sorted.bam".format(read_group=read_group_id)
 
 def call_vars(bams, sample_name, ref, mem, gatk):
     hc_input = " -I " + " -I ".join(bams)
