@@ -10,12 +10,12 @@ import os
 align_cmd = '''
 bwa mem -t {threads} -R '{read_group}' {ref} {fq1} {fq2} | 
 samblaster | 
-sambamba view -S -f bam -l 0 /dev/stdin |
-sambamba sort -t {threads} -m {mem} --tmpdir=/ephemeral/ -o {out} /dev/stdin
+samtools view -b -u /dev/stdin |
+samtools sort -@ {threads} -m {mem} -O BAM -o {out} /dev/stdin
 '''
 
 index_cmd = '''
-sambamba index -t {threads} {bam}
+samtools index {bam}
 '''
 
 call_vars_cmd = '''

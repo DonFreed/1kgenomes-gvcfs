@@ -3,6 +3,16 @@
 ### Runs on each node upon cluster startup ###
 ### Configures ephemeral disks             ###
 
+# Install samtools if not installed #
+if [[ -z `which samtools` ]]; then
+    wget https://github.com/samtools/samtools/releases/download/1.3.1/samtools-1.3.1.tar.bz2
+    tar -jxf samtools-1.3.1.tar.bz2
+    cd samtools-1.3.1/
+    ./configure
+    make install
+    cd
+fi
+
 # For compute nodes, one of the ephemeral disks is mounted on /mnt #
 work=$(df | grep "/mnt" | wc -l)
 if [ $work -eq 0 ]; then
