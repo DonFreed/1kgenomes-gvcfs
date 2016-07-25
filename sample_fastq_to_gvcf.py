@@ -88,8 +88,8 @@ def index_bam(bam, threads):
 
 def process_args():
     parser = argparse.ArgumentParser(description="Process fastq files from a single sample to gvcf files. Initial files and final results are uploaded to S3")
-    parser.add_argument("--threads", type=int, default=4, help="The number of alignment and indexing threads")
-    parser.add_argument("--sort_mem", default="384M", help="Memory to use when sorting the alignment")
+    parser.add_argument("--threads", type=int, default=8, help="The number of alignment and indexing threads")
+    parser.add_argument("--sort_mem", default="128M", help="Memory to use when sorting the alignment")
     parser.add_argument("--call_vars_mem", default="3g", help="Memory to use when calling variants")
     parser.add_argument("--gatk", default="/usr/local/bin/GenomeAnalysisTK.jar", help="The GATK .jar file")
     parser.add_argument("reference", help="The reference genome")
@@ -101,9 +101,11 @@ def process_args():
     return parser.parse_args()
 
 def main(args):
-    log_format = "%(filename)s::%(funcName)s [%(levelname)s] %(message)s"
+    log_format = "%(asctime)s %(filename)s::%(funcName)s [%(levelname)s] %(message)s"
     logging.basicConfig(level=logging.INFO,
                         format=log_format)
+
+    logging.info("Starting analysis")
 
     if not args:
         args = process_args()
@@ -145,6 +147,8 @@ def main(args):
     os.remove(gvcf_local)
     logging.info("Removing index file: {}".format(gvcf_index))
     os.remove(gvcf_index)
+
+    logging.info("Analsis finished")
 
 if __name__ == "__main__":
     main(None)
