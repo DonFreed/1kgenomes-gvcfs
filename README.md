@@ -2,7 +2,7 @@
 
 ### Overview
 
-This repository contains scripts for analyzing low-coverage fastq files using in Phase 3 of the 1000 Genomes project to produce gVCF files. The scripts are designed to run on Amazon EC2 using [StarCluster](http://star.mit.edu/cluster/). The scripts are run on a custom AMI which is described below. Raw fastq files from each sample are aligned with bwa, duplicates are marked with samblaster, alignments are sorted and indexed using sambamba and variants are called using the GATK. The `/data` directory contains an NFS shared EBS volume with the indexed reference genome ([hs37d5.fa](ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/reference/phase2_reference_assembly_sequence/README_human_reference_20110707)) and space for log files.
+This repository contains scripts for analyzing low-coverage fastq files from Phase 3 of the 1000 Genomes project to produce gVCF files. The scripts are designed to run on Amazon EC2 using [StarCluster](http://star.mit.edu/cluster/). The scripts are run on a custom AMI which is described below. Raw fastq files from each sample are aligned with bwa, duplicates are marked with samblaster, alignments are sorted and indexed using sambamba and variants are called using the GATK. The `/data` directory contains an NFS shared EBS volume with the indexed reference genome ([hs37d5.fa](ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/reference/phase2_reference_assembly_sequence/README_human_reference_20110707)) and space for log files.
 
 ### AMI Details
 
