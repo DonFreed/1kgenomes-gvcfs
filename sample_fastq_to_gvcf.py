@@ -2,6 +2,7 @@
 
 import argparse
 import boto3
+import botocore
 import os.path
 import logging
 import subprocess
@@ -92,6 +93,7 @@ def process_args():
     parser.add_argument("--sort_mem", default="128M", help="Memory to use when sorting the alignment")
     parser.add_argument("--call_vars_mem", default="3g", help="Memory to use when calling variants")
     parser.add_argument("--gatk", default="/usr/local/bin/GenomeAnalysisTK.jar", help="The GATK .jar file")
+    parser.add_argument("--bam_key", default="1000genomes/BAM/{sample}/{run}.bam", help="The S3 destination for temporary BAM files")
     parser.add_argument("reference", help="The reference genome")
     parser.add_argument("access_key", help="AWS access key")
     parser.add_argument("secret_key", help="AWS secret key")
@@ -112,32 +114,60 @@ def main(args):
 
     session = boto3.session.Session(aws_access_key_id=args.access_key, aws_secret_access_key=args.secret_key)
     s3 = session.resource("s3")
+    
+    bucket_end = args.upload_location.find('/')
+    bucket = args.upload_location[:bucket_end]
+    if bucket.startswith("s3://"):
+        bucket = bucket[5:]
+    key = args.upload_location[bucket_end + 1:]
 
     bams = []
     for fastq in args.input_fastq:
-        bucket_end = fastq.find('/')
-        bucket = fastq[:bucket_end]
-        if bucket.startswith("s3://"):
-            bucket = bucket[5:]
-        fq1 = fastq[bucket_end + 1:]
+        fq_bucket_end = fastq.find('/')
+        fq_bucket = fastq[:fq_bucket_end]
+        if fq_bucket.startswith("s3://"):
+            fq_bucket = fq_bucket[5:]
+        fq1 = fastq[fq_bucket_end + 1:]
         fq2 = fq1[:-15] + "2.filt.fastq.gz"
         read_group_id = os.path.basename(fq1)[:-16]
 
-        # Download the fastq #
-        next_bam = download_and_align(s3, bucket, fq1, fq2, args.sample_name, read_group_id, args.threads, args.reference, args.sort_mem)
-        index_bam(next_bam, args.threads)
-        bams.append(next_bam)
+        # Get alignments #
+        bam_key = args.bam_key.format(sample=args.sample_name, run=read_group_id)
+        bam_in_s3 = False
+        s3_bam = s3.Object(bucket, bam_key)
+        try:
+            s3_bam.load()
+        except boocore.exceptions.ClientError as e:
+            if e.response["Error"]["Code"] == "404":
+                pass
+            else:
+                raise e
+        else:
+            bam_in_s3 = True
+        if bam_in_s3:
+            # Alignments are already present in s3, just download #
+            bam_out = "/ephemeral/{read_group}_sorted.bam".format(read_group=read_group_id)
+            logging.info("Downloading {} to {}".format(bucket + '/' + bam_key, bam_out))
+            s3_bam.download_file(bam_out)
+            logging.info("Downloading {} to {}".format(bucket + '/' + bam_key + ".bai", bam_out + ".bai"))
+            s3.Object(bucket, bam_key + ".bai").download_file(bam_out + ".bai")
+            bams.append(bam_out)
+        else:
+            # Make the alignments from the fastq #
+            next_bam = download_and_align(s3, fq_bucket, fq1, fq2, args.sample_name, read_group_id, args.threads, args.reference, args.sort_mem)
+            index_bam(next_bam, args.threads)
+            bams.append(next_bam)
+            # Upload intermediate files to s3 #
+            logging.info("Uploading {} to {}".format(next_bam, bucket + '/' + bam_key))
+            s3.meta.client.upload_file(next_bam, bucket, bam_key)
+            logging.info("Uploading {} to {}".format(next_bam + ".bai", bucket + '/' + bam_key + ".bai"))
+            s3.meta.client.upload_file(next_bam + ".bai", bucket, bam_key + ".bai")
 
     # Call variants on the bam files #
     gvcf_local = call_vars(bams, args.sample_name, args.reference, args.call_vars_mem, args.gatk)
     gvcf_index = gvcf_local + ".tbi"
 
     # Upload the GVCF file #
-    bucket_end = args.upload_location.find('/')
-    bucket = args.upload_location[:bucket_end]
-    if bucket.startswith("s3://"):
-        bucket = bucket[5:]
-    key = args.upload_location[bucket_end + 1:]
     logging.info("Uploading {} to {}".format(gvcf_local, bucket + '/' + key))
     s3.meta.client.upload_file(gvcf_local, bucket, key)
     logging.info("Uploading {} to {}".format(gvcf_index, bucket + '/' + key + ".tbi"))
