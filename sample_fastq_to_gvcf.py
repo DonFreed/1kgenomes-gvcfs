@@ -137,7 +137,7 @@ def main(args):
         s3_bam = s3.Object(bucket, bam_key)
         try:
             s3_bam.load()
-        except boocore.exceptions.ClientError as e:
+        except botocore.exceptions.ClientError as e:
             if e.response["Error"]["Code"] == "404":
                 pass
             else:
