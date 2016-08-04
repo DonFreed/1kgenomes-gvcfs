@@ -32,7 +32,7 @@ def process_args():
     parser.add_argument("--n_to_run", type=int, help="The number of samples to run [all]")
     parser.add_argument("--log_dir", default="/data/Logs/", help="A directory to store log files")
     parser.add_argument("--reference", default="/data/Reference/hs37d5.fa", help="The human reference genome")
-    parser.add_argument("--sleep", default=5.0, type=float, help="The amount of time to sleep inbetween queueing jobs")
+    parser.add_argument("--sleep", default=1.0, type=float, help="The amount of time to sleep inbetween queueing jobs")
     parser.add_argument("--max_waiting_jobs", default=10, type=int, help="The maximum number of waiting jobs in the queue")
     parser.add_argument("--destination_key", default="1000genomes/gVCF/{sample}/{sample}.g.vcf.gz", help="The S3 destination key")
     parser.add_argument("--bam_key", default="1000genomes/BAM/{sample}/{run}.bam", help="The S3 destination for temporary BAM files")
@@ -107,7 +107,12 @@ def main(args):
         sample_key = args.destination_key.format(sample=sample)
         if sample_key in finished_samples:
             logging.info("Sample key {} is already present in the destination bucket {}. Skipping...".format(sample_key, args.destination_bucket))
+            n_run += 1
             continue
+
+        if hasattr(args, "n_to_run"):
+            if n_run >= args.n_to_run:
+                break
 
         check_n_waiting_jobs(args.max_waiting_jobs)
 
@@ -132,9 +137,6 @@ def main(args):
         time.sleep(args.sleep)
 
         n_run += 1
-        if hasattr(args, "n_to_run"):
-            if n_run >= args.n_to_run:
-                break
 
 if __name__ == "__main__":
     main(None)

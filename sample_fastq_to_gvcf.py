@@ -30,11 +30,11 @@ java -Xmx{mem} -jar {gatk} -T HaplotypeCaller -R {ref} \
 
 gvcf_concat_cmd = '''
 java -Xmx{mem} -cp {gatk} org.broadinstitute.gatk.tools.CatVariants \
--R {ref} -o {out} {input} --assumeSorted \
+-R {ref} -out {out} {input} --assumeSorted \
 --variant_index_type LINEAR --variant_index_parameter 128000
 '''
 
-chroms = [str(x) for x in range(23)] + ['X', 'Y', 'MT']
+chroms = [str(x) for x in range(1, 23)] + ['X', 'Y', 'MT']
 
 def download_and_align(s3, bucket, fq1, fq2, sample, read_group_id, threads, ref, mem):
     fq1_local = "/ephemeral/" + os.path.basename(fq1)
@@ -90,7 +90,7 @@ def index_bam(bam, threads):
     subprocess.check_call(cmd, shell=True)
     return
 
-def concat_gvcf(gvcfs, sample_name, ref, mem, gatk):
+def concat_gvcfs(gvcfs, sample_name, ref, mem, gatk):
     cat_input = " -V " + " -V ".join(gvcfs)
     cat_output = "/ephemeral/" + sample_name + ".g.vcf.gz"
 
@@ -192,7 +192,7 @@ def main(args):
     s3_gvcfs = []
     for chrom in chroms:
         # Check if the gvcf subset is in s3 #
-        gvcf_key = args.gvcf_key.format(sample=sample, chrom=chrom)
+        gvcf_key = args.gvcf_key.format(sample=args.sample_name, chrom=chrom)
         s3_gvcfs.append(gvcf_key)
         gvcf_in_s3 = False
         s3_gvcf = s3.Object(bucket, gvcf_key)
@@ -232,22 +232,22 @@ def main(args):
         os.remove(bam + ".bai")
 
     # Concatenate the gVCF subsets #
-    concat_gvcf = concat_gvcf(gvcfs, args.sample_name, args.reference, args.call_vars_mem, args.gatk)
+    concat_gvcf = concat_gvcfs(gvcfs, args.sample_name, args.reference, args.call_vars_mem, args.gatk)
     for gvcf in gvcfs:
         logging.info("Removing gvcf and index {}".format(gvcf, gvcf + ".tbi"))
         os.remove(gvcf)
         os.remove(gvcf + ".tbi")
 
     # Upload the GVCF file #
-    logging.info("Uploading {} to {}".format(gvcf_local, bucket + '/' + key))
-    s3.meta.client.upload_file(gvcf_local, bucket, key)
-    logging.info("Uploading {} to {}".format(gvcf_index, bucket + '/' + key + ".tbi"))
-    s3.meta.client.upload_file(gvcf_index, bucket, key + ".tbi")
+    logging.info("Uploading {} to {}".format(concat_gvcf, bucket + '/' + key))
+    s3.meta.client.upload_file(concat_gvcf, bucket, key)
+    logging.info("Uploading {} to {}".format(concat_gvcf + ".tbi", bucket + '/' + key + ".tbi"))
+    s3.meta.client.upload_file(concat_gvcf + ".tbi", bucket, key + ".tbi")
 
-    logging.info("Removing gvcf file: {}".format(gvcf_local))
-    os.remove(gvcf_local)
-    logging.info("Removing index file: {}".format(gvcf_index))
-    os.remove(gvcf_index)
+    logging.info("Removing gvcf file: {}".format(concat_gvcf))
+    os.remove(concat_gvcf)
+    logging.info("Removing index file: {}".format(concat_gvcf + ".tbi"))
+    os.remove(concat_gvcf + ".tbi")
 
     # Clean up the intermediate files in the s3 bucket #
     logging.info("Cleaning up the s3 bucket")
