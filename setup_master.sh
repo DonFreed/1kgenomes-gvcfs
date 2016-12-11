@@ -17,7 +17,7 @@ n_hosts=$(echo $hosts | wc -w)
 # Run the ephemeral configuration script on each node #
 for host in $hosts
 do
-    ssh $host ${DIR}/node_startup.sh &
+    ssh $host "bash -s" < ${DIR}/node_startup.sh &
 done
 
 # Mount ephemeral disks on the compute nodes #
@@ -45,7 +45,7 @@ do
     # Find the total memory (in bytes) #
     mem_size=$(ssh $host cat /proc/meminfo | grep "MemTotal" | sed 's/^MemTotal:[ ]*\([0-9]*\) kB$/\1/')
     mem_size=$((mem_size * 1024))
-    
+
     if [ -z $host_size ]; then
         echo "complex_values        ephemeral=0,total_mem=$mem_size" >> ~/tmp_node.conf
     else
