@@ -9,7 +9,7 @@ import time
 import pickle
 from retrying import retry
 
-analysis_cmd = 'qsub -e {log} -o {out} -l h="node*",ephemeral={size},total_mem={mem} general.sh {fastq_to_gvcf} --bam_key {bam_key} {ref} {access_key} {secret_key} {dest} {sample} {input_fastq}'
+analysis_cmd = 'qsub -e {log} -o {out} -l h="node*",ephemeral={size},total_mem={mem} general.sh {fastq_to_gvcf} --bam_key {sentieon} {bam_key} {ref} {access_key} {secret_key} {dest} {sample} {input_fastq}'
 
 @retry(wait_fixed=2000, stop_max_attempt_number=5)
 def check_n_waiting_jobs(max_waiting_jobs):
@@ -37,6 +37,7 @@ def process_args():
     parser.add_argument("--destination_key", default="1000genomes/gVCF/{sample}/{sample}.g.vcf.gz", help="The S3 destination key")
     parser.add_argument("--bam_key", default="1000genomes/BAM/{sample}/{run}.bam", help="The S3 destination for temporary BAM files")
     parser.add_argument("--s3_keys_cache", default="/home/onekg/s3_paths.p", help="A pickle of the fastq keys in s3")
+    parser.add_arguemnt("--sentieon", action="store_true", help="Run the analysis using Sentieon's tools")
     parser.add_argument("destination_bucket", help="The destination bucket")
     parser.add_argument("access_key", help="AWS access key")
     parser.add_argument("secret_key", help="AWS secret key")
@@ -117,6 +118,10 @@ def main(args):
         check_n_waiting_jobs(args.max_waiting_jobs)
 
         fastq, sizes = tuple(zip(*samples[sample]))
+
+        sentieon = ''
+        if args.sentieon:
+            sentieon = "--sentieon"
         
         cmd = analysis_cmd.format(
             log = args.log_dir + "/analysis_{}.log".format(n_run),
@@ -124,6 +129,7 @@ def main(args):
             size = int(sum(sizes) * 4.5),
             mem = 8 * 1024 * 1024 * 1024, # Alignment ~6 GB, sorting ~1 GB, duplicates ?
             fastq_to_gvcf = '/data/sample_fastq_to_gvcf.py',
+            sentieon = sentieon,
             bam_key = args.bam_key,
             ref = args.reference,
             access_key = args.access_key,
