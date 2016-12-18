@@ -132,7 +132,7 @@ def main(args):
             fastq_to_gvcf = '/data/sample_fastq_to_gvcf.py',
             sentieon = sentieon,
             bam_key = args.bam_key,
-            threads = "--threads {}".format(args.threads)
+            threads = "--threads {}".format(args.threads),
             ref = args.reference,
             access_key = args.access_key,
             secret_key = args.secret_key,

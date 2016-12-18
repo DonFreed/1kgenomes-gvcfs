@@ -330,7 +330,7 @@ def main(args):
     os.remove(concat_gvcf)
     logging.info("Removing index file: {}".format(concat_gvcf + ".tbi"))
     os.remove(concat_gvcf + ".tbi")
-i
+
     # Clean up the intermediate files in the s3 bucket #
     logging.info("Cleaning up the s3 bucket")
     to_remove = s3_bams + [x + ".bai" for x in s3_bams] + s3_gvcfs + [x + ".tbi" for x in s3_gvcfs]
