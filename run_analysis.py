@@ -9,7 +9,7 @@ import time
 import pickle
 from retrying import retry
 
-analysis_cmd = 'qsub -e {log} -o {out} -l h="node*",ephemeral={size},total_mem={mem} general.sh {fastq_to_gvcf} --bam_key {sentieon} {bam_key} {threads} {ref} {access_key} {secret_key} {dest} {sample} {input_fastq}'
+analysis_cmd = 'qsub -e {log} -o {out} -l h="node*",ephemeral={size},total_mem={mem} general.sh {fastq_to_gvcf} --bam_key {bam_key} {sentieon} {threads} {ref} {access_key} {secret_key} {dest} {sample} {input_fastq}'
 
 @retry(wait_fixed=2000, stop_max_attempt_number=5)
 def check_n_waiting_jobs(max_waiting_jobs):
@@ -128,7 +128,7 @@ def main(args):
             log = args.log_dir + "/analysis_{}.log".format(n_run),
             out = args.log_dir + "/analysis_{}.out".format(n_run),
             size = int(sum(sizes) * 4.5),
-            mem = 7 * 1024 * 1024 * 1024, # Alignment ~6 GB, sorting ~1 GB, duplicates ?
+            mem = 9 * 1024 * 1024 * 1024, # Alignment ~6 GB, sorting ~1 GB, duplicates ?
             fastq_to_gvcf = '/data/sample_fastq_to_gvcf.py',
             sentieon = sentieon,
             bam_key = args.bam_key,
