@@ -128,7 +128,7 @@ def main(args):
             log = args.log_dir + "/analysis_{}.log".format(n_run),
             out = args.log_dir + "/analysis_{}.out".format(n_run),
             size = int(sum(sizes) * 4.5),
-            mem = 9 * 1024 * 1024 * 1024, # Alignment ~6 GB, sorting ~1 GB, duplicates ?
+            mem = 18 * 1024 * 1024 * 1024, 
             fastq_to_gvcf = '/data/sample_fastq_to_gvcf.py',
             sentieon = sentieon,
             bam_key = args.bam_key,
