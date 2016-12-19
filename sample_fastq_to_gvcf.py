@@ -17,7 +17,7 @@ samtools sort -@ {threads} -m {mem} -O BAM -o {out} /dev/stdin
 
 sentieon_align_cmd = '''
 bwa mem -t {threads} -R '{read_group}' {ref} {fq1} {fq2} |
-sentieon util sort -o {out} -i -
+sentieon util sort --sam2bam -o {out} -i -
 '''
 
 sentieon_dedup_cmd = '''
@@ -123,7 +123,11 @@ def call_vars(bams, sample_name, ref, chrom=None, threads=None, mem=None, gatk=N
         input_files = " -i " + " -i ".join(bams)
     else:
         input_files = " -I " + " -I ".join(bams)
-    output_vars = "/ephemeral/" + sample_name + '_' + chrom + ".g.vcf.gz"
+
+    if chrom:
+        output_vars = "/ephemeral/" + sample_name + '_' + chrom + ".g.vcf.gz"
+    else:
+        output_vars = "/ephemeral/" + sample_name + ".g.vcf.gz"
 
     if sentieon:
         cmd = sentieon_call_cmd
@@ -145,7 +149,7 @@ def call_vars(bams, sample_name, ref, chrom=None, threads=None, mem=None, gatk=N
     logging.info("Running variant calling: {}".format(cmd))
     subprocess.check_call(cmd, shell=True)
 
-    return hc_output
+    return output_vars
 
 def index_bam(bam, threads):
     cmd = index_cmd
@@ -246,7 +250,17 @@ def main(args):
             # Make the alignments from the fastq #
             next_bam = download_and_align(s3, fq_bucket, fq1, fq2, args.sample_name, read_group_id, args.threads, args.reference, args.sort_mem, args.sentieon)
             if args.sentieon:
-                next_bam = dedup_bam(next_bam, threads, read_group_id)
+                previous_bam = next_bam
+                next_bam = dedup_bam(previous_bam, args.threads, read_group_id)
+                logging.info("Removing bam {} and index {}".format(previous_bam, previous_bam + ".bai"))
+                try:
+                    os.remove(previous_bam)
+                except FileNotFoundError:
+                    pass
+                try:
+                    os.remove(previous_bam + ".bai")
+                except FileNotFoundError:
+                    pass
             else:
                 index_bam(next_bam, args.threads)
             bams.append(next_bam)
@@ -257,7 +271,9 @@ def main(args):
             s3.meta.client.upload_file(next_bam + ".bai", bucket, bam_key + ".bai")
 
     # Call variants on the bam files #
-    if sentieon:
+    gvcfs = []
+    s3_gvcfs = []
+    if args.sentieon:
         concat_gvcf = call_vars(bams, args.sample_name, args.reference, threads=args.threads, sentieon=True)
         for bam in bams:
             logging.info("Removing bam {} and index {}".format(bam, bam + ".bai"))
@@ -270,8 +286,6 @@ def main(args):
                 os.remove(tmp_file)
 
     else:
-        gvcfs = []
-        s3_gvcfs = []
         for chrom in chroms:
             # Check if the gvcf subset is in s3 #
             gvcf_key = args.gvcf_key.format(sample=args.sample_name, chrom=chrom)
