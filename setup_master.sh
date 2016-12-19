@@ -39,14 +39,6 @@ do
     # Get the inital configurations #
     qconf -se $host | grep -v "complex_values\|load_values\|processors\|^ " > ~/tmp_node.conf
 
-    # Increase user limits for root for current session #
-    ulimit -Sn 5000
-    ulimit -Hn 10000
-
-    # Increase user limits for root and all users for future sessions #
-    echo -e 'root\tsoft\tnofile\t5000\nroot\thard\tnofile\t10000' >> /etc/security/limits.conf
-    echo -e '*\tsoft\tnofile\t5000\n*\thard\tnofile\t10000' >> /etc/security/limits.conf
-
     # Find the ephemeral space (in bytes) #
     host_size=$(ssh $host df -B 1 | grep "ephemeral" | awk '{print $2}')
 
@@ -62,3 +54,5 @@ do
 
     qconf -Me ~/tmp_node.conf
 done
+
+# Unmount ephemeral from master
