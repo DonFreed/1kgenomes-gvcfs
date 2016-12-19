@@ -55,4 +55,8 @@ do
     qconf -Me ~/tmp_node.conf
 done
 
+# Increase user limits for root for current session in master node #
+ulimit -Sn 5000
+ulimit -Hn 10000
+
 # Unmount ephemeral from master
