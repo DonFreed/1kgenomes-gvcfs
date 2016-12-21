@@ -55,11 +55,6 @@ do
     qconf -Me ~/tmp_node.conf
 done
 
-# Increase user limits for root for current session in master node #
-# ulimit -Hn 10000
-# ulimit -Sn 5000
-# Not necessary
-
 # Configure to increase the soft and hard limits for opened files in master node #
 
 qconf -sconf > tmp_scheduler.conf
