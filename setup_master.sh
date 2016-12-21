@@ -59,4 +59,11 @@ done
 ulimit -Sn 5000
 ulimit -Hn 10000
 
-# Unmount ephemeral from master
+# Configure to increase the soft and hard limits for opened files in master node #
+
+qconf -sconf > tmp_scheduler.conf
+sed "$(grep -n execd_params tmp_scheduler.conf \
+| cut -f1 -d:)s/none/H_DESCRIPTORS=10000,S_DESCRIPTORS=5000/" \
+tmp_scheduler.conf > global
+qconf -Mconf global
+rm global tmp_scheduler.conf
