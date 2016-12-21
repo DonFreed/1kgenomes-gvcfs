@@ -56,8 +56,8 @@ do
 done
 
 # Increase user limits for root for current session in master node #
-ulimit -Sn 5000
 ulimit -Hn 10000
+ulimit -Sn 5000
 
 # Configure to increase the soft and hard limits for opened files in master node #
 
