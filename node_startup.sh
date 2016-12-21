@@ -48,3 +48,7 @@ else
     mount /dev/md0 /ephemeral
     chmod ugo+rwx /ephemeral
 fi
+
+# Increase user limits for root and all users for future sessions #
+echo -e 'root\tsoft\tnofile\t5000\nroot\thard\tnofile\t10000' >> /etc/security/limits.conf
+echo -e '*\tsoft\tnofile\t5000\n*\thard\tnofile\t10000' >> /etc/security/limits.conf
