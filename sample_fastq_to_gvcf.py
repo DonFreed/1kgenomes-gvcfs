@@ -15,6 +15,18 @@ samtools view -b -u /dev/stdin |
 samtools sort -@ {threads} -m {mem} -O BAM -o {out} /dev/stdin
 '''
 
+sentieon_align_cmd = '''
+bwa mem -t {threads} -R '{read_group}' {ref} {fq1} {fq2} |
+sentieon util sort --sam2bam -o {out} -i -
+'''
+
+sentieon_dedup_cmd = '''
+sentieon driver -t {threads} -i {bam} --algo LocusCollector \
+--fun score_info {score}
+sentieon driver -t {threads} -i {bam} --algo Dedup --rmdup \
+--score_info {score} --metrics {metrics} {out}
+'''
+
 index_cmd = '''
 samtools index {bam}
 '''
@@ -28,6 +40,15 @@ java -Xmx{mem} -jar {gatk} -T HaplotypeCaller -R {ref} \
 -A SpanningDeletions -A StrandOddsRatio -A AlleleBalanceBySample 
 '''
 
+sentieon_call_cmd = '''
+sentieon driver -t {threads} -r {ref} {input} --algo Haplotyper \
+--emit_mode GVCF --annotation AlleleBalance \
+--annotation TandemRepeatAnnotator --annotation ClippingRankSumTest \
+--annotation GCContent --annotation MappingQualityZero \
+--annotation SpanningDeletions --annotation StrandOddsRatio \
+--annotation AlleleBalanceBySample {out}
+'''
+
 gvcf_concat_cmd = '''
 java -Xmx{mem} -cp {gatk} org.broadinstitute.gatk.tools.CatVariants \
 -R {ref} -out {out} {input} --assumeSorted \
@@ -36,7 +57,7 @@ java -Xmx{mem} -cp {gatk} org.broadinstitute.gatk.tools.CatVariants \
 
 chroms = [str(x) for x in range(1, 23)] + ['X', 'Y', 'MT']
 
-def download_and_align(s3, bucket, fq1, fq2, sample, read_group_id, threads, ref, mem):
+def download_and_align(s3, bucket, fq1, fq2, sample, read_group_id, threads, ref, mem=None, sentieon=False):
     fq1_local = "/ephemeral/" + os.path.basename(fq1)
     fq2_local = "/ephemeral/" + os.path.basename(fq2)
     
@@ -44,16 +65,30 @@ def download_and_align(s3, bucket, fq1, fq2, sample, read_group_id, threads, ref
     s3.Object(bucket, fq1).download_file(fq1_local)
     logging.info("Downloading {} to {}".format(bucket + '/' + fq2, fq2_local))
     s3.Object(bucket, fq2).download_file(fq2_local)
-    
-    cmd = align_cmd
-    cmd = cmd.format(
-        threads = threads,
-        read_group = r"@RG\tID:{}\tSM:{}".format(read_group_id, sample),
-        ref = ref,
-        fq1 = fq1_local,
-        fq2 = fq2_local,
-        mem = mem,
-        out = "/ephemeral/{read_group}_sorted.bam".format(read_group=read_group_id))
+
+    read_group = r"@RG\tID:{}\tSM:{}".format(read_group_id, sample)
+
+    if sentieon:
+        out = "/ephemeral/{read_group}_dup.bam".format(read_group=read_group_id)
+        cmd = sentieon_align_cmd
+        cmd = cmd.format(
+            threads = threads,
+            read_group = read_group,
+            ref = ref,
+            fq1 = fq1_local,
+            fq2 = fq2_local,
+            out = out)
+    else:
+        out = "/ephemeral/{read_group}_sorted.bam".format(read_group=read_group_id)
+        cmd = align_cmd
+        cmd = cmd.format(
+            threads = threads,
+            read_group = read_group,
+            ref = ref,
+            fq1 = fq1_local,
+            fq2 = fq2_local,
+            mem = mem,
+            out = out)
 
     logging.info("Running alignment: {}".format(cmd))
     subprocess.check_call(cmd, shell=True)
@@ -62,25 +97,59 @@ def download_and_align(s3, bucket, fq1, fq2, sample, read_group_id, threads, ref
     os.remove(fq1_local)
     os.remove(fq2_local)
 
-    return "/ephemeral/{read_group}_sorted.bam".format(read_group=read_group_id)
+    return out
 
-def call_vars(chrom, bams, sample_name, ref, mem, gatk):
-    hc_input = " -I " + " -I ".join(bams)
-    hc_output = "/ephemeral/" + sample_name + '_' + chrom + ".g.vcf.gz"
+def dedup_bam(bam, threads, read_group_id):
+    out = "/ephemeral/{read_group}_sorted.bam".format(read_group=read_group_id)
 
-    cmd = call_vars_cmd
+    cmd = sentieon_dedup_cmd
     cmd = cmd.format(
-        mem = mem,
-        gatk = gatk,
-        ref = ref,
-        input = hc_input,
-        out = hc_output,
-        chrom = chrom)
+        threads = threads,
+        bam = bam,
+        score = "/ephemeral/{read_group}_score.txt".format(read_group=read_group_id),
+        metrics = "/ephemeral/{read_group}_metrics.txt".format(read_group=read_group_id),
+        out = out)
+
+    logging.info("Running duplicate removal: {}".format(cmd))
+    subprocess.check_call(cmd, shell=True)
+
+    logging.info("Removing {}".format(bam))
+    os.remove(bam)
+
+    return out
+
+def call_vars(bams, sample_name, ref, chrom=None, threads=None, mem=None, gatk=None, sentieon=False):
+    if sentieon:
+        input_files = " -i " + " -i ".join(bams)
+    else:
+        input_files = " -I " + " -I ".join(bams)
+
+    if chrom:
+        output_vars = "/ephemeral/" + sample_name + '_' + chrom + ".g.vcf.gz"
+    else:
+        output_vars = "/ephemeral/" + sample_name + ".g.vcf.gz"
+
+    if sentieon:
+        cmd = sentieon_call_cmd
+        cmd = cmd.format(
+            threads = threads,
+            ref = ref,
+            input = input_files,
+            out = output_vars)
+    else:
+        cmd = call_vars_cmd
+        cmd = cmd.format(
+            mem = mem,
+            gatk = gatk,
+            ref = ref,
+            input = input_files,
+            out = output_vars,
+            chrom = chrom)
 
     logging.info("Running variant calling: {}".format(cmd))
     subprocess.check_call(cmd, shell=True)
 
-    return hc_output
+    return output_vars
 
 def index_bam(bam, threads):
     cmd = index_cmd
@@ -115,6 +184,7 @@ def process_args():
     parser.add_argument("--gatk", default="/usr/local/bin/GenomeAnalysisTK.jar", help="The GATK .jar file")
     parser.add_argument("--bam_key", default="1000genomes/BAM/{sample}/{run}.bam", help="The S3 destination for temporary BAM files")
     parser.add_argument("--gvcf_key", default="1000genomes/gVCF/{sample}/{sample}_{chrom}.g.vcf.gz", help="The S3 destination for temporary gVCF files")
+    parser.add_argument("--sentieon", action="store_true", help="Run the analysis with Sentieon's tools")
     parser.add_argument("reference", help="The reference genome")
     parser.add_argument("access_key", help="AWS access key")
     parser.add_argument("secret_key", help="AWS secret key")
@@ -178,8 +248,21 @@ def main(args):
             bams.append(bam_out)
         else:
             # Make the alignments from the fastq #
-            next_bam = download_and_align(s3, fq_bucket, fq1, fq2, args.sample_name, read_group_id, args.threads, args.reference, args.sort_mem)
-            index_bam(next_bam, args.threads)
+            next_bam = download_and_align(s3, fq_bucket, fq1, fq2, args.sample_name, read_group_id, args.threads, args.reference, args.sort_mem, args.sentieon)
+            if args.sentieon:
+                previous_bam = next_bam
+                next_bam = dedup_bam(previous_bam, args.threads, read_group_id)
+                logging.info("Removing bam {} and index {}".format(previous_bam, previous_bam + ".bai"))
+                try:
+                    os.remove(previous_bam)
+                except FileNotFoundError:
+                    pass
+                try:
+                    os.remove(previous_bam + ".bai")
+                except FileNotFoundError:
+                    pass
+            else:
+                index_bam(next_bam, args.threads)
             bams.append(next_bam)
             # Upload intermediate files to s3 #
             logging.info("Uploading {} to {}".format(next_bam, bucket + '/' + bam_key))
@@ -190,53 +273,66 @@ def main(args):
     # Call variants on the bam files #
     gvcfs = []
     s3_gvcfs = []
-    for chrom in chroms:
-        # Check if the gvcf subset is in s3 #
-        gvcf_key = args.gvcf_key.format(sample=args.sample_name, chrom=chrom)
-        s3_gvcfs.append(gvcf_key)
-        gvcf_in_s3 = False
-        s3_gvcf = s3.Object(bucket, gvcf_key)
-        try:
-            s3_gvcf.load()
-        except botocore.exceptions.ClientError as e:
-            if e.response["Error"]["Code"] == "404":
-                pass
+    if args.sentieon:
+        concat_gvcf = call_vars(bams, args.sample_name, args.reference, threads=args.threads, sentieon=True)
+        for bam in bams:
+            logging.info("Removing bam {} and index {}".format(bam, bam + ".bai"))
+            os.remove(bam)
+            os.remove(bam + ".bai")
+        for tmp_file in os.listdir("/ephemeral/"):
+            if tmp_file.endswith("_score.txt") or tmp_file.endswith("_metrics.txt"):
+                tmp_file = "/ephemeral/" + tmp_file
+                logging.info("Removing temporary file {}".format(tmp_file))
+                os.remove(tmp_file)
+
+    else:
+        for chrom in chroms:
+            # Check if the gvcf subset is in s3 #
+            gvcf_key = args.gvcf_key.format(sample=args.sample_name, chrom=chrom)
+            s3_gvcfs.append(gvcf_key)
+            gvcf_in_s3 = False
+            s3_gvcf = s3.Object(bucket, gvcf_key)
+            try:
+                s3_gvcf.load()
+            except botocore.exceptions.ClientError as e:
+                if e.response["Error"]["Code"] == "404":
+                    pass
+                else:
+                    raise e
             else:
-                raise e
-        else:
-            gvcf_in_s3 = True
+                gvcf_in_s3 = True
 
-        if gvcf_in_s3:
-            # Download the subsets #
-            gvcf_out = "/ephemeral/" + args.sample_name + '_' + chrom + ".g.vcf.gz"
-            logging.info("Downloading {} to {}".format(bucket + '/' + gvcf_key, gvcf_out))
-            s3_gvcf.download_file(gvcf_out)
-            logging.info("Downloading {} to {}".format(bucket + '/' + gvcf_key + ".tbi", gvcf_out + ".tbi"))
-            s3.Object(bucket, gvcf_key + ".tbi").download_file(gvcf_out + ".tbi")
-            gvcfs.append(gvcf_out)
-        else:        
-            next_gvcf = call_vars(chrom, bams, args.sample_name, args.reference, args.call_vars_mem, args.gatk)
-            gvcf_idx = next_gvcf + ".tbi"
-            gvcfs.append(next_gvcf)
+            if gvcf_in_s3:
+                # Download the subsets #
+                gvcf_out = "/ephemeral/" + args.sample_name + '_' + chrom + ".g.vcf.gz"
+                logging.info("Downloading {} to {}".format(bucket + '/' + gvcf_key, gvcf_out))
+                s3_gvcf.download_file(gvcf_out)
+                logging.info("Downloading {} to {}".format(bucket + '/' + gvcf_key + ".tbi", gvcf_out + ".tbi"))
+                s3.Object(bucket, gvcf_key + ".tbi").download_file(gvcf_out + ".tbi")
+                gvcfs.append(gvcf_out)
+            else:        
+                next_gvcf = call_vars(bams, args.sample_name, args.reference, chrom=chrom, mem=args.call_vars_mem, gatk=args.gatk)
+                gvcf_idx = next_gvcf + ".tbi"
+                gvcfs.append(next_gvcf)
 
-            # Upload the gvcf subset to s3 #
-            logging.info("Upload {} to {}".format(next_gvcf, bucket + '/' + gvcf_key))
-            s3.meta.client.upload_file(next_gvcf, bucket, gvcf_key)
-            logging.info("Upload {} to {}".format(gvcf_idx, bucket + '/' + gvcf_key + ".tbi"))
-            s3.meta.client.upload_file(gvcf_idx, bucket, gvcf_key + ".tbi")
+                # Upload the gvcf subset to s3 #
+                logging.info("Upload {} to {}".format(next_gvcf, bucket + '/' + gvcf_key))
+                s3.meta.client.upload_file(next_gvcf, bucket, gvcf_key)
+                logging.info("Upload {} to {}".format(gvcf_idx, bucket + '/' + gvcf_key + ".tbi"))
+                s3.meta.client.upload_file(gvcf_idx, bucket, gvcf_key + ".tbi")
 
-    # Remove the BAM files #
-    for bam in bams:
-        logging.info("Removing bam {} and index {}".format(bam, bam + ".bai"))
-        os.remove(bam)
-        os.remove(bam + ".bai")
+        # Remove the BAM files #
+        for bam in bams:
+            logging.info("Removing bam {} and index {}".format(bam, bam + ".bai"))
+            os.remove(bam)
+            os.remove(bam + ".bai")
 
-    # Concatenate the gVCF subsets #
-    concat_gvcf = concat_gvcfs(gvcfs, args.sample_name, args.reference, args.call_vars_mem, args.gatk)
-    for gvcf in gvcfs:
-        logging.info("Removing gvcf and index {}".format(gvcf, gvcf + ".tbi"))
-        os.remove(gvcf)
-        os.remove(gvcf + ".tbi")
+        # Concatenate the gVCF subsets #
+        concat_gvcf = concat_gvcfs(gvcfs, args.sample_name, args.reference, args.call_vars_mem, args.gatk)
+        for gvcf in gvcfs:
+            logging.info("Removing gvcf and index {}".format(gvcf, gvcf + ".tbi"))
+            os.remove(gvcf)
+            os.remove(gvcf + ".tbi")
 
     # Upload the GVCF file #
     logging.info("Uploading {} to {}".format(concat_gvcf, bucket + '/' + key))
