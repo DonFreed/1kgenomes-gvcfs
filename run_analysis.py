@@ -9,7 +9,7 @@ import time
 import pickle
 from retrying import retry
 
-analysis_cmd = 'qsub -e {log} -o {out} -l h="node*",ephemeral={size},total_mem={mem} general.sh {fastq_to_gvcf} --bam_key {bam_key} {sentieon} {threads} {ref} {access_key} {secret_key} {dest} {sample} {input_fastq}'
+analysis_cmd = 'qsub -V -e {log} -o {out} -l h="node*",ephemeral={size},total_mem={mem} general.sh {fastq_to_gvcf} --bam_key {bam_key} {sentieon} {threads} {ref} {access_key} {secret_key} {dest} {sample} {input_fastq}'
 
 @retry(wait_fixed=2000, stop_max_attempt_number=5)
 def check_n_waiting_jobs(max_waiting_jobs):
